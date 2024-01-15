@@ -225,11 +225,14 @@ async function get_product_details(numberofprocess = 4) {
   if (!fs.existsSync(path.join(__dirname, "../assets/data")))
     fs.mkdirSync(path.join(__dirname, "../assets/data"), { recursive: true });
 
+  const browsers = [];
+
   const singleProcess = async (processnumber) => {
     let finished = false;
     while (!finished) {
       // Launch a new browser session
       const browser = await puppeteer.launch({ headless: false });
+      browsers.push(browser);
       // Open a new page
       const page = await browser.newPage();
       // Set the navigation timeout (in milliseconds)
@@ -336,6 +339,19 @@ async function get_product_details(numberofprocess = 4) {
   ) {
     processes.push(singleProcess(processnumber)); // Assuming the process numbers start from 0 and increment by 1
   }
+
+  // Assuming browsers is an array containing your Puppeteer browser instances
+  process.on("SIGINT", () => {
+    Promise.all(browsers.map((browser) => browser.close()))
+      .then(() => process.exit())
+      .catch(() => process.exit());
+  });
+
+  process.on("SIGTERM", () => {
+    Promise.all(browsers.map((browser) => browser.close()))
+      .then(() => process.exit())
+      .catch(() => process.exit());
+  });
 
   await Promise.all(processes).then(() => {
     const dir = path.join(__dirname, "../assets/data");

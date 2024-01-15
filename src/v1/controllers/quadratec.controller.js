@@ -29,6 +29,8 @@ exports.start = async (req, res) => {
     // Listen for any exit code:
     globalVariable.child.on("close", function (code) {
       console.log("closing code: " + code);
+      globalVariable.child = null;
+      globalVariable.site = null;
     });
 
     process.on("exit", function () {

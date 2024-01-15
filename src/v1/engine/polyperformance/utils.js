@@ -3,6 +3,10 @@ const path = require("path");
 const Papa = require("papaparse"); // Including papaparse for CSV operations
 const JSZip = require("jszip");
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 exports.get_progress = async () => {
   let progress = {
     brands: 0.0,
@@ -294,6 +298,8 @@ exports.getCSV = async () => {
   const refactoredData = refactor(removedData);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
   zipFile(path.join(__dirname, "./assets/output.csv"), "./public/output.zip");
+
+  await sleep(1000);
 
   return "./public/output.zip";
 };

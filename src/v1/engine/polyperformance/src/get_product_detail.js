@@ -2,6 +2,7 @@ const puppeteer = require("puppeteer");
 const fs = require("fs");
 const { exec } = require("child_process");
 const path = require("path");
+const globalVariable = require("../../../global/global");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

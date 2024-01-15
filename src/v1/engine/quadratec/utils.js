@@ -3,6 +3,10 @@ const path = require("path");
 const Papa = require("papaparse"); // Including papaparse for CSV operations
 const JSZip = require("jszip");
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function count_files(dir) {
   let count = 0;
   const subdirs = fs.readdirSync(dir);
@@ -179,7 +183,8 @@ function refactor(data) {
   let count = 0;
 
   data.forEach((dt) => {
-    const handle = dt.url.split("/")[-1];
+    const seperatedurl = dt.url.split("/");
+    const handle = seperatedurl[seperatedurl.length - 1];
     const title = dt.title;
     const body = dt.details;
     const vendor = dt.brand;
@@ -333,6 +338,8 @@ exports.getCSV = async () => {
   const refactoredData = refactor(new_data);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
   zipFile(path.join(__dirname, "./assets/output.csv"), "./public/output.zip");
+
+  await sleep(1000);
 
   return "./public/output.zip";
 };

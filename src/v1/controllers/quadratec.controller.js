@@ -1,13 +1,10 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const process = require("process");
-const utils = require("../engine/polyperformance/utils");
+const utils = require("../engine/quadratec/utils");
 const globalVariable = require("../global/global");
 
-let core_path = path.join(
-  __dirname,
-  "../engine/polyperformance/polyperformance.core.js"
-);
+let core_path = path.join(__dirname, "../engine/quadratec/quadratec.core.js");
 
 exports.start = async (req, res) => {
   try {
@@ -17,7 +14,7 @@ exports.start = async (req, res) => {
       globalVariable.site = null;
     }
     globalVariable.child = spawn("node", [core_path], { detached: true });
-    globalVariable.site = "polyperformance";
+    globalVariable.site = "quadratec";
 
     // Listen for any response from the child process
     globalVariable.child.stdout.on("data", function (data) {
@@ -65,8 +62,9 @@ exports.start = async (req, res) => {
       process.exit();
     });
 
-    res.status(201).json({ result: "started polyperformance scraping!" });
+    res.status(201).json({ result: "started quadratec scraping!" });
   } catch (err) {
+    console.log("start err: ", err);
     res.status(500).json(err);
   }
 };
@@ -76,6 +74,7 @@ exports.progress = async (req, res) => {
     const progress = await utils.get_progress();
     res.status(201).json({ result: progress });
   } catch (err) {
+    console.log("get progress: ", err);
     res.status(500).json(err);
   }
 };

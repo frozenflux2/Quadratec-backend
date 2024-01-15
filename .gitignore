@@ -1,3 +1,4 @@
 /.env
 /node_modules
 src/v1/engine/polyperformance/assets/
+/public

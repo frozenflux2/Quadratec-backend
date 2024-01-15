@@ -19,14 +19,20 @@ async function getbyoption(page, optionname) {
       finalpriceDiv = priceDiv.querySelector(
         'span[data-price-type="finalPrice"]'
       );
-      oldpriceDiv = priceDiv.querySelector('span[data-price-type="oldPrice"]');
+      oldpriceDiv = document.querySelector(
+        'span[class="old-price sly-old-price no-display"]'
+      );
     }
 
     let skuNumber = skuDiv ? skuDiv.textContent : "";
     let finalprice = finalpriceDiv
       ? finalpriceDiv.textContent.replace("$", "")
       : "";
-    let oldprice = oldpriceDiv ? oldpriceDiv.textContent.replace("$", "") : "";
+    let oldprice = oldpriceDiv
+      ? oldpriceDiv
+          .querySelector('span[data-price-type="oldPrice"]')
+          .textContent.replace("$", "")
+      : "";
     // let description = descriptionElement ? descriptionElement.innerHTML.trim() : '';
 
     return { skuNumber: skuNumber, finalprice: finalprice, oldprice: oldprice };
@@ -104,6 +110,8 @@ async function get_details(page, metadata, brandname) {
           });
         }
       });
+      if (options.length === 0)
+        throw new Error("Option not found exception: Something went wrong!");
     }
     return options;
   });
@@ -124,10 +132,22 @@ async function get_details(page, metadata, brandname) {
   {
     let optionData = await getbyoption(page, "original");
     while (optionData["images"].length === 0) {
-      if (count > 5) throw new Error("Forced exception: Something went wrong!");
-      console.log(metadata["url"]);
-      await page.goto(metadata["url"]);
-      await sleep(3000);
+      if (count > 5) throw new Error("Forced exception: Images not found!");
+      if (count === 5) {
+        const img = await page.evaluate(() => {
+          return document.querySelector(
+            'img[class="gallery-placeholder__image"]'
+          ).src;
+        });
+        optionData["images"].push(img);
+        // optionData.push(document.querySelector('img[class="gallery-placeholder__image"]').src
+        // images.push(img);)
+      } else {
+        console.log(metadata["url"]);
+        await page.goto(metadata["url"]);
+        await sleep(3000);
+        optionData = await getbyoption(page, "original");
+      }
       optionData = await getbyoption(page, "original");
       count++;
     }
@@ -143,7 +163,7 @@ async function get_details(page, metadata, brandname) {
 
     let optionData = await getbyoption(page, ov["name"]);
     while (optionData["images"].length === 0) {
-      if (count > 5) throw new Error("Forced exception: Something went wrong!");
+      if (count > 5) throw new Error("Forced exception: Images not found!");
       console.log(metadata["url"]);
       await page.goto(metadata["url"]);
       await sleep(3000);

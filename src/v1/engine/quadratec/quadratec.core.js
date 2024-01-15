@@ -9,6 +9,6 @@ const utils = require("./utils");
 
   if (status["brands"] < 100) await get_brands();
   if (status["categories"] < 100) await get_categories(8);
-  if (status["metadata"] < 100) await get_product_metadata(8);
-  if (status["details"] < 100) await get_product_details(8);
+  if (status["metadata"] < 100) await get_product_metadata(16);
+  if (status["details"] < 100) await get_product_details(16);
 })();

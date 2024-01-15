@@ -4,9 +4,9 @@ const globalVariable = require("../global/global");
 
 exports.status = async (req, res) => {
   if (globalVariable.child) {
-    res.status(201).json({ result: true });
+    res.status(201).json({ result: true, site: globalVariable.site });
   } else {
-    res.status(201).json({ result: false });
+    res.status(201).json({ result: false, site: "" });
   }
 };
 

@@ -101,6 +101,9 @@ exports.get_progress = async () => {
     fs.existsSync(path.join(__dirname, `./assets/metadata`)) &&
     progress["categories"] == 100.0
   ) {
+    const categories = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "./assets/categories.json"), "utf8")
+    );
     await clean_file(categories);
     progress["metadata"] =
       ((await count_files(path.join(__dirname, "./assets/metadata"))) /

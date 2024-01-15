@@ -2,22 +2,70 @@ const { spawn } = require("child_process");
 const path = require("path");
 const process = require("process");
 const utils = require("../engine/polyperformance/utils");
+const globalVariable = require("../global/global");
 
 let core_path = path.join(
   __dirname,
   "../engine/polyperformance/polyperformance.core.js"
 );
-let child = null;
 
 exports.start = async (req, res) => {
   try {
-    if (child) {
-      res.status(201).json({ result: "already scraping polyperformance!" });
-    } else {
-      child = spawn("node", [core_path], { detached: true });
-
-      res.status(201).json({ result: "started polyperformance scraping!" });
+    if (globalVariable.child) {
+      process.kill(-child.pid);
+      globalVariable.child = null;
+      globalVariable.site = null;
     }
+    globalVariable.child = spawn("node", [core_path], { detached: true });
+    globalVariable.site = "polyperformance";
+
+    // Listen for any response from the child process
+    globalVariable.child.stdout.on("data", function (data) {
+      console.log("stdout: " + data);
+    });
+
+    // Listen for any errors:
+    globalVariable.child.stderr.on("data", function (data) {
+      console.log("stderr: " + data);
+    });
+
+    // Listen for any exit code:
+    globalVariable.child.on("close", function (code) {
+      console.log("closing code: " + code);
+    });
+
+    process.on("exit", function () {
+      try {
+        if (globalVariable.child) {
+          process.kill(-globalVariable.child.pid);
+          globalVariable.child = null;
+        }
+      } catch (error) {}
+    });
+
+    process.on("SIGINT", function () {
+      // for Ctrl+C interruption
+      try {
+        if (globalVariable.child) {
+          process.kill(-globalVariable.child.pid);
+          globalVariable.child = null;
+        }
+      } catch (error) {}
+      process.exit(); // optional, if you want the parent process to exit irrespective of any still running child processes
+    });
+
+    process.on("uncaughtException", function () {
+      // for uncaught exceptions
+      try {
+        if (globalVariable.child) {
+          process.kill(-globalVariable.child.pid);
+          globalVariable.child = null;
+        }
+      } catch (error) {}
+      process.exit();
+    });
+
+    res.status(201).json({ result: "started polyperformance scraping!" });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -33,25 +81,19 @@ exports.progress = async (req, res) => {
 };
 
 exports.status = async (req, res) => {
-  if (child) {
+  if (globalVariable.child) {
     res.status(201).json({ result: true });
   } else {
     res.status(201).json({ result: false });
   }
 };
 
-exports.stop = async (req, res) => {
+exports.download = async (req, res) => {
   try {
-    if (child) {
-      process.kill(-child.pid);
-      child = null;
-      res.status(201).json({ result: "stopped polyperformance scraping!" });
-    } else {
-      res
-        .status(400)
-        .json({ result: "polyperformance scraping is not running!" });
-    }
-  } catch (err) {
-    res.status(500).json(err);
+    const downloadPath = await utils.getCSV();
+    res.download(downloadPath);
+  } catch (error) {
+    console.log("download err: ", error);
+    res.status(400).json({ result: "Can't download!!" });
   }
 };

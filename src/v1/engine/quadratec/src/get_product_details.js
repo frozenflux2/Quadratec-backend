@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer");
 const fs = require("fs");
+const { JSDOM } = require("jsdom");
 const path = require("path");
 
 function sleep(ms) {
@@ -7,36 +8,7 @@ function sleep(ms) {
 }
 
 async function get_details(page, optionname) {
-  console.log(optionname, page.url());
-
-  const notfoundDiv = await page.evaluate(() => {
-    const notfoundDiv = document.querySelector(
-      'div[class="col-sm-5 not-found-message"]'
-    );
-    return notfoundDiv;
-  });
-  if (notfoundDiv) {
-    console.log("Not found    ", page.url());
-    return {
-      details: "not found",
-      optionname: optionname,
-      optionurl: page.url(),
-    };
-  }
-
-  const title = await page.evaluate(() => {
-    const title = document.querySelector("title").textContent.trim();
-    return title;
-  });
-  if (title === "403 Forbidden") {
-    console.log("403 Forbidden    ", page.url());
-    return {
-      details: "403 Forbidden",
-      optionname: optionname,
-      optionurl: page.url(),
-    };
-  }
-
+  console.log(page.url());
   // To get all div elements with class 'pricing-block'
   const elements = await page.$$(".pricing-block"); // Note the use of `$$` for multiple elements
 
@@ -105,11 +77,150 @@ async function get_details(page, optionname) {
     };
     return product;
   }, elements[0]);
-  if (typeof optionname === "string" || optionname instanceof String)
-    product["optionname"] = [optionname];
-  else product["optionname"] = optionname;
-  product["optionurl"] = page.url();
+  product["values"] = [optionname];
   return product;
+}
+
+async function get_option_details(nid, product_id, values) {
+  const baseURL = `https://www.quadratec.com/nocache/product_ajax/${nid}/${product_id}/`;
+
+  // get image
+  const img = await fetch(`${baseURL}images`)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Image Fetch Error! status: ${response.status}`);
+      }
+      // Parse the JSON response
+      return response.json();
+    })
+    .then((data) => {
+      return data.img;
+    })
+    .catch((error) => {
+      console.log("Empty Image");
+      return "";
+    });
+
+  // get details
+  const html_content = await fetch(`${baseURL}details_json`)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Details Fetch Error! status: ${response.status}`);
+      }
+      // Parse the JSON response
+      return response.json();
+    })
+    .then((data) => {
+      return data;
+    });
+
+  // Create a new instance of the DOMParser
+  const dom = new JSDOM(html_content);
+
+  const catalogDiv = dom.window.document.querySelector(
+    'div[class="part-num catalog"]'
+  );
+  let catalognumber = "";
+  if (catalogDiv)
+    catalognumber = catalogDiv
+      .querySelector('span[class="num-value"]')
+      .textContent.trim();
+
+  const mfgDiv = dom.window.document.querySelector('div[class="part-num mfg"]');
+  let mfgnumber = "";
+  if (mfgDiv) {
+    mfgnumber = mfgDiv
+      .querySelector('span[class="num-value"]')
+      .textContent.trim();
+  }
+
+  const msrpDiv = dom.window.document.querySelector(
+    'div[class="pricing-row msrp"]'
+  );
+  let oldprice = "";
+  if (msrpDiv) oldprice = msrpDiv.textContent.trim().slice(5);
+
+  const priceDiv = dom.window.document.querySelector('div[class="best-price"]');
+  let finalprice = "";
+  if (priceDiv) finalprice = priceDiv.textContent.trim().slice(1);
+
+  const instockDiv = dom.window.document.querySelector(
+    'div[class*="stock-status"]'
+  );
+  let instock = "";
+  if (instockDiv) instock = instockDiv.textContent.trim();
+
+  const details = {
+    catalognumber: catalognumber,
+    mfgnumber: mfgnumber,
+    oldprice: oldprice,
+    finalprice: finalprice,
+    instock: instock,
+    imgs: [img],
+    values: values,
+  };
+
+  return details;
+}
+
+async function get_options(page) {
+  const optionmetadata = await page.evaluate(() => {
+    const optionmetadata = { nid: "", names: [], values: [] };
+
+    const nidDiv = document.querySelector('div[id="nid"]');
+    if (nidDiv) optionmetadata.nid = nidDiv.textContent.trim();
+
+    const optionnameDivs = document.querySelectorAll(
+      'label[class="control-label"]'
+    );
+    optionnameDivs.forEach((div) => {
+      optionmetadata.names.push(div.innerText);
+    });
+
+    const v2jsonDiv = document.querySelector('div[id="v2json"]');
+    if (v2jsonDiv) {
+      console.log("v2jsonDiv founded...");
+      const v2json = JSON.parse(v2jsonDiv.textContent.trim());
+      for (const om of Object.values(v2json)) {
+        optionmetadata.values.push({
+          product_id: om["product_id"],
+          values: om["values"],
+        });
+      }
+      return optionmetadata;
+    }
+
+    const jsonselectDiv = document.querySelector(
+      'span[id="json-select-boxes"]'
+    );
+    if (jsonselectDiv) {
+      console.log("jsonselectDiv founded...");
+      const jsonselect = JSON.parse(jsonselectDiv.textContent.trim());
+
+      const get_select = (om, data) => {
+        if (Object.keys(data).length === 0) {
+          optionmetadata.values.push(om);
+          return;
+        } else {
+          for (const key of Object.keys(data)) {
+            let localom = {
+              product_id: data[key]["product_id"],
+              values: om["values"].slice(),
+            };
+            localom["values"].push(key);
+            get_select(localom, data[key]["next_step"]);
+          }
+          return;
+        }
+      };
+
+      get_select({ product_id: "", values: [] }, jsonselect["init"]);
+      return optionmetadata;
+    }
+    return optionmetadata;
+  });
+
+  return optionmetadata;
 }
 
 async function get_product(page, metadata) {
@@ -124,13 +235,11 @@ async function get_product(page, metadata) {
       url: metadata["url"],
     };
   }
-
-  let options = [];
   // Navigate to the specified URL
   await page.goto(metadata["url"]);
-
   await sleep(1000);
 
+  // If product is empty
   const cancelDiv = await page.evaluate(() => {
     const cancelDiv = document.querySelector('div[class="cancelled-banner"]');
     return cancelDiv;
@@ -145,67 +254,27 @@ async function get_product(page, metadata) {
       url: metadata["url"],
     };
   }
+  const optionData = [];
 
-  options.push(await get_details(page, "original"));
+  // get original options
+  optionData.push(await get_details(page, "original"));
 
-  let optionmetadata = await page.evaluate(() => {
-    const v2jsonDiv = document.querySelector('div[id="v2json"]');
-    let v2json = [];
-    if (v2jsonDiv) v2json = JSON.parse(v2jsonDiv.textContent.trim());
+  // get variants
+  const optionmetadata = await get_options(page);
 
-    return v2json;
-  });
-
-  if (Object.values(optionmetadata).length > 0) {
-    console.log("V2Json is existing...");
-
-    for (const om of Object.values(optionmetadata)) {
-      await page.goto(`https://www.quadratec.com${om["path"]}`);
-      await sleep(1000);
-
-      options.push(await get_details(page, om["values"]));
-    }
-  } else {
-    optionmetadata = await page.evaluate(() => {
-      let optionmetadata = [];
-      const divOptions = document.querySelector(
-        'select[class="option-box btn-success form-control form-select final-selection form-control form-select"]'
-      );
-      if (divOptions) {
-        const optionElements = divOptions.querySelectorAll("option");
-        optionElements.forEach((option, index) => {
-          if (index > 0) {
-            optionmetadata.push({
-              name: option.textContent.trim(),
-              value: option.value,
-            });
-            // const value = option.value;
-            // console.log(value);
-            // divOptions.value = value;
-            // divOptions
-          }
-        });
-      }
-      return optionmetadata;
-    });
-
-    if (optionmetadata.length > 0) {
-      console.log("Options select is existing...");
-      console.log(optionmetadata);
-      for (const om of optionmetadata) {
-        await page.select(
-          'select[class="option-box btn-success form-control form-select final-selection form-control form-select"]',
-          om["value"]
-        );
-        await sleep(1000);
-
-        options.push(await get_details(page, om["name"]));
-      }
-    }
+  for (const md of optionmetadata.values) {
+    optionData.push(
+      await get_option_details(
+        optionmetadata["nid"],
+        md["product_id"],
+        md["values"]
+      )
+    );
   }
 
   product = {
-    options: options,
+    options: optionData,
+    optionnames: optionmetadata.names,
     brand: metadata["brand"],
     category: metadata["category"],
     title: metadata["title"],
@@ -228,6 +297,7 @@ async function get_product_details(numberofprocess = 4) {
   const browsers = [];
 
   const singleProcess = async (processnumber) => {
+    if (processnumber != 3) return;
     let finished = false;
     while (!finished) {
       // Launch a new browser session

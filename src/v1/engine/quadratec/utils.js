@@ -127,8 +127,8 @@ exports.get_progress = async () => {
       100;
   }
 
-  if (progress["details"] == 100)
-    await clean_dir(path.join(__dirname, "./assets/data"));
+  // if (progress["details"] == 100)
+  //   await clean_dir(path.join(__dirname, "./assets/data"));
 
   return progress;
 };
@@ -154,19 +154,22 @@ function getAllData() {
 }
 
 function getNewData(data) {
-  const producturls = data.map((x) => x["url"]);
-
   const new_data = [];
   for (let dt of data) {
-    if (Array.isArray(dt["options"]) && dt["url"].split("/").length <= 6) {
+    if (
+      Array.isArray(dt["options"]) &&
+      dt["url"].split("/").length <= 6 &&
+      !dt["url"].includes[".htm/"]
+    ) {
       let new_options = [];
       for (const op of dt["options"]) {
         if (op["details"] != "not found" && op["details"] != "403 Forbidden")
           new_options.push(op);
       }
-      if (new_options.length > 1) new_options = new_options.slice(1);
+      // if (new_options.length > 1) new_options = new_options.slice(1);
       new_data.push({
         options: new_options,
+        optionnames: dt["optionnames"],
         brand: dt["brand"],
         category: dt["category"],
         title: dt["title"],
@@ -175,6 +178,70 @@ function getNewData(data) {
       });
     }
   }
+  return new_data;
+}
+
+function addImages(data) {
+  const new_data = [];
+  for (const dt of data) {
+    let new_options = [];
+
+    let original_images = undefined;
+    let original_index = -1;
+    let new_images = undefined;
+    dt.options.forEach((option, oid) => {
+      if (oid === 0) {
+        original_images = option.imgs.filter((item, index, self) => {
+          return self.indexOf(item) === index;
+        });
+        new_images = original_images.slice();
+      } else {
+        new_images = original_images.slice();
+        if (option.imgs[0] !== "") {
+          // original_index = original_images.indexOf(option.imgs[0]);
+          // new_images[original_index] = option.imgs[0];
+          new_images[0] = option.imgs[0];
+        }
+      }
+      // else {
+      //   new_images = original_images.slice();
+      //   if (option.imgs[0] !== "") {
+      //     if (original_index > -1) new_images[original_index] = option.imgs[0];
+      //     else {
+      //       console.log(
+      //         "original index not found: ",
+      //         dt["url"],
+      //         option.values,
+      //         option.imgs
+      //       );
+      //       new_images.push(option.imgs[0]);
+      //     }
+      //   }
+      // }
+
+      new_options.push({
+        catalognumber: option.catalognumber,
+        mfgnumber: option.mfgnumber,
+        oldprice: option.oldprice,
+        finalprice: option.finalprice,
+        instock: option.instock,
+        imgs: new_images,
+        values: option.values,
+      });
+    });
+
+    if (new_options.length > 1) new_options = new_options.slice(1);
+    new_data.push({
+      options: new_options,
+      optionnames: dt["optionnames"],
+      brand: dt["brand"],
+      category: dt["category"],
+      title: dt["title"],
+      url: dt["url"],
+      details: dt["details"],
+    });
+  }
+
   return new_data;
 }
 
@@ -189,46 +256,52 @@ function refactor(data) {
     const body = dt.details;
     const vendor = dt.brand;
     const category = dt.category;
+    const optionnames = dt.optionnames;
 
     dt.options.forEach((option, oid) => {
       const mfgnumber = option.mfgnumber;
+      const catalognumber = option.catalognumber;
+
       let finalprice = option.finalprice;
-      let oldprice = option.oldprice || "0";
+      let oldprice = option.oldprice;
+      if (oldprice === "") oldprice = finalprice;
 
-      let num_finalprice = parseFloat(finalprice.replace(/,/g, ""));
-      let num_oldprice = parseFloat(oldprice.replace(/,/g, ""));
-      if (isNaN(num_finalprice)) num_finalprice = 0;
+      let instock = option["instock"];
+      if (instock === "In Stock" || instock === "Ships from 3rd Party")
+        instock = "active";
+      else instock = "draft";
 
-      if (num_oldprice > num_finalprice * 1.7) {
-        oldprice = finalprice;
-        count++;
-      }
-      if (num_oldprice === 0 || num_oldprice < num_finalprice) {
-        oldprice = finalprice;
-      }
-      const optionname = option.optionname;
+      const optionvalues = option.values;
       option.imgs.forEach((img, i) => {
         let tempPd = {
           Handle: handle,
           Title: title,
           "Body (HTML)": body,
           Vendor: vendor,
-          "Product Category": "Vehicles & Parts > Vehicle Parts & Accessories",
+          "Product Category": category,
           Type: "",
           Tags: "",
           Published: "",
-          "Option1 Name": "Part #",
-          "Option1 Value": optionname,
-          "Variant SKU": mfgnumber,
+          "Option1 Name": "",
+          "Option1 Value": "",
+          "Option2 Name": "",
+          "Option2 Value": "",
+          "Option3 Name": "",
+          "Option3 Value": "",
+          "Variant SKU": catalognumber,
+          "Variant Grams": "",
+          "Variant Inventory Tracker": "",
+          "Variant Inventory Policy": "continue",
+          "Variant Fulfillment Service": "manual",
           "Variant Price": finalprice,
           "Variant Compare At Price": oldprice,
           "Variant Requires Shipping": "TRUE",
           "Variant Taxable": "TRUE",
-          "Variant Barcode": "",
+          "Variant Barcode": mfgnumber,
           "Image Src": img,
           "Image Position": i + 1,
           "Image Alt Text": "",
-          "Gift Card": "",
+          "Gift Card": "FALSE",
           "SEO Title": "",
           "SEO Description": "",
           "Google Shopping / Google Product Category": "",
@@ -243,33 +316,30 @@ function refactor(data) {
           "Google Shopping / Custom Label 3": "",
           "Google Shopping / Custom Label 4": "",
           "Variant Image": "",
-          "Variant Weight Unit": "",
+          "Variant Weight Unit": "Ib",
           "Variant Tax Code": "",
           "Cost per item": "",
-          "Included / United States": "",
+          "Included / United States": "TRUE",
           "Price / United States": "",
           "Compare At Price / United States": "",
-          "Included / International": "",
+          "Included / International": "TRUE",
           "Price / International": "",
           "Compare At Price / International": "",
-          Status: "",
+          Status: instock,
         };
 
         // options logic
         if (
-          optionname === "original" ||
+          optionvalues == ["original"] ||
           dt.options.length === 1 ||
-          oid !== 0 ||
-          i !== 0
+          oid + i > 0
         ) {
           tempPd["Option1 Name"] = "";
           tempPd["Option1 Value"] = "";
-        }
-
-        if (oid !== 0) {
-          tempPd.Title = "";
-          tempPd["Body (HTML)"] = "";
-          tempPd.Vendor = "";
+          tempPd["Option2 Name"] = "";
+          tempPd["Option2 Value"] = "";
+          tempPd["Option3 Name"] = "";
+          tempPd["Option3 Value"] = "";
         }
 
         if (i !== 0) {
@@ -282,8 +352,29 @@ function refactor(data) {
           tempPd["Product Category"] = "";
           tempPd["Variant Requires Shipping"] = "";
           tempPd["Variant Taxable"] = "";
+          tempPd["Variant Barcode"] = "";
+          tempPd["Gift Card"] = "";
+          tempPd["Variant Weight Unit"] = "";
+          tempPd["Included / United States"] = "";
+          tempPd["Included / International"] = "";
+          tempPd["Status"] = "";
         }
 
+        if (oid > 0) {
+          tempPd.Title = "";
+          tempPd["Body (HTML)"] = "";
+          tempPd.Vendor = "";
+        }
+        try {
+          if (i === 0 && optionvalues[0] != ["original"]) {
+            for (let i = 0; i < optionvalues.length; i++) {
+              tempPd[`Option${i + 1} Name`] = optionnames[i];
+              tempPd[`Option${i + 1} Value`] = optionvalues[i];
+            }
+          }
+        } catch (error) {
+          console.log("empty values", dt.url);
+        }
         refactoredData.push(tempPd);
       });
     });
@@ -304,7 +395,7 @@ function convertToCSV(data, outputPath) {
   );
 }
 
-function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
+async function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
   const zip = new JSZip();
   const fileName = path.basename(filePath);
 
@@ -330,14 +421,18 @@ function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
 exports.getCSV = async () => {
   data = getAllData();
   new_data = getNewData(data);
+  added_data = addImages(new_data);
   console.log(data.length);
   console.log(new_data.length);
-
+  // await fs.unlink("./public/output.zip");
   // const newData = getNewData(data);
   // const removedData = removeDuplicatedData(newData);
-  const refactoredData = refactor(new_data);
+  const refactoredData = refactor(added_data);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
-  zipFile(path.join(__dirname, "./assets/output.csv"), "./public/output.zip");
+  await zipFile(
+    path.join(__dirname, "./assets/output.csv"),
+    "./public/output.zip"
+  );
 
   await sleep(1000);
 

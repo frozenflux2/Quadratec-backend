@@ -240,7 +240,7 @@ function refactor(data) {
   return refactoredData;
 }
 
-function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
+async function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
   const zip = new JSZip();
   const fileName = path.basename(filePath);
 
@@ -293,11 +293,15 @@ exports.getCSV = async () => {
     }
   }
 
+  await fs.unlink("./public/output.zip");
   const newData = getNewData(data);
   const removedData = removeDuplicatedData(newData);
   const refactoredData = refactor(removedData);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
-  zipFile(path.join(__dirname, "./assets/output.csv"), "./public/output.zip");
+  await zipFile(
+    path.join(__dirname, "./assets/output.csv"),
+    "./public/output.zip"
+  );
 
   await sleep(1000);
 

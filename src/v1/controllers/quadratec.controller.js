@@ -84,7 +84,9 @@ exports.progress = async (req, res) => {
 exports.download = async (req, res) => {
   try {
     const downloadPath = await utils.getCSV();
-    res.download(downloadPath);
+    console.log("download path: ", downloadPath);
+    if (!downloadPath) res.status(400).json({ result: "Can't download!!" });
+    else res.download(downloadPath);
   } catch (error) {
     console.log("download err: ", error);
     res.status(400).json({ result: "Can't download!!" });

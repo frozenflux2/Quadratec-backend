@@ -240,28 +240,36 @@ function refactor(data) {
   return refactoredData;
 }
 
-async function zipFile(filePath, outputZipPath, compressionLevel = "DEFLATE") {
+const zipFile = (filePath, outputZipPath, compressionLevel = "DEFLATE") => {
   const zip = new JSZip();
   const fileName = path.basename(filePath);
 
-  fs.readFile(filePath, function (err, data) {
-    if (err) throw err;
+  return new Promise((resolve, reject) => {
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        reject(err);
+      } else {
+        zip.file(fileName, data, { compression: compressionLevel });
 
-    // Add the file to the zip
-    zip.file(fileName, data, { compression: compressionLevel });
-
-    // Generate the zip file as a buffer
-    zip
-      .generateAsync({ type: "nodebuffer", compression: compressionLevel })
-      .then(function (content) {
-        // Write zip file to disk
-        fs.writeFile(outputZipPath, content, function (err) {
-          if (err) throw err;
-          console.log(`Zipped file saved to ${outputZipPath}`);
-        });
-      });
+        // Generate the zip file as a buffer
+        zip
+          .generateAsync({ type: "nodebuffer", compression: compressionLevel })
+          .then((content) => {
+            // Wrap fs.writeFile in another Promise
+            fs.writeFile(outputZipPath, content, (writeErr) => {
+              if (writeErr) {
+                reject(writeErr);
+              } else {
+                console.log(`Zipped file saved to ${outputZipPath}`);
+                resolve(); // Resolve the outer Promise
+              }
+            });
+          })
+          .catch(reject); // Reject the outer Promise on error here
+      }
+    });
   });
-}
+};
 
 function convertToCSV(data, outputPath) {
   // Here you would implement or use a library to write the CSV.
@@ -292,18 +300,19 @@ exports.getCSV = async () => {
       data = data.concat(brandData);
     }
   }
-
-  await fs.unlink("./public/output.zip");
   const newData = getNewData(data);
   const removedData = removeDuplicatedData(newData);
   const refactoredData = refactor(removedData);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
-  await zipFile(
-    path.join(__dirname, "./assets/output.csv"),
-    "./public/output.zip"
-  );
-
-  await sleep(1000);
-
-  return "./public/output.zip";
+  try {
+    await zipFile(
+      path.join(__dirname, "./assets/output.csv"),
+      "./public/output.zip"
+    );
+    console.log("Done zipping");
+    return "./public/output.zip";
+  } catch (error) {
+    console.log("Error on zipping: ", error);
+    return null;
+  }
 };

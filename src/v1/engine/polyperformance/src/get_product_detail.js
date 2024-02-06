@@ -12,29 +12,26 @@ async function getbyoption(page, optionname) {
   let productData = await page.evaluate(() => {
     const skuDiv = document.querySelector('div[itemprop="sku"]');
 
-    const priceDiv = document.querySelector('span[itemprop="offers"]');
-
-    let finalpriceDiv = undefined;
-    let oldpriceDiv = undefined;
-    if (priceDiv) {
-      finalpriceDiv = priceDiv.querySelector(
-        'span[data-price-type="finalPrice"]'
-      );
-      oldpriceDiv = document.querySelector(
-        'span[class="old-price sly-old-price no-display"]'
-      );
-    }
+    const finalpriceDiv = document.querySelector(
+      'span[data-price-type="finalPrice"]'
+    );
+    const oldpriceDiv = document.querySelector(
+      'span[class="old-price sly-old-price no-display"]'
+    );
 
     let skuNumber = skuDiv ? skuDiv.textContent : "";
     let finalprice = finalpriceDiv
       ? finalpriceDiv.textContent.replace("$", "")
       : "";
-    let oldprice = oldpriceDiv
-      ? oldpriceDiv
-          .querySelector('span[data-price-type="oldPrice"]')
-          .textContent.replace("$", "")
-      : "";
-    // let description = descriptionElement ? descriptionElement.innerHTML.trim() : '';
+    let oldprice = "";
+    if (oldpriceDiv) {
+      console.log("oldprice style...    ", oldpriceDiv.style);
+      //   oldprice = oldpriceDiv.style;
+      if (oldpriceDiv.style.length === 0)
+        oldprice = oldpriceDiv
+          .querySelector('span[class="price"]')
+          .textContent.replace("$", "");
+    }
 
     return { skuNumber: skuNumber, finalprice: finalprice, oldprice: oldprice };
   });
@@ -95,7 +92,26 @@ async function getbyoption(page, optionname) {
 }
 
 async function get_details(page, metadata, brandname) {
-  await page.goto(metadata["url"], { timeout: 60000 });
+  // Set a maximum duration to wait for the page load
+  try {
+    await page.goto(metadata["url"], { waitUntil: "networkidle0" });
+    console.log("original...   ", metadata["url"]);
+  } catch (err) {
+    console.log("loading error....    ", metadata["url"]);
+  }
+
+  if (page.url().includes("404")) {
+    console.log("Product Not founded...    ", metadata["url"]);
+    return {
+      options: [],
+      brand: brandname,
+      name: metadata["name"],
+      url: metadata["url"],
+      description: "404 Not Found",
+      parent_url: "parent_url",
+    };
+  }
+
   await sleep(3000);
 
   const optionvalues = await page.evaluate(() => {
@@ -149,7 +165,6 @@ async function get_details(page, metadata, brandname) {
         await sleep(3000);
         optionData = await getbyoption(page, "original");
       }
-      optionData = await getbyoption(page, "original");
       count++;
     }
     options.push(optionData);

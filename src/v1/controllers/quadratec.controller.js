@@ -3,6 +3,7 @@ const path = require("path");
 const process = require("process");
 const utils = require("../engine/quadratec/utils");
 const globalVariable = require("../global/global");
+const fs = require("fs-extra");
 
 let core_path = path.join(__dirname, "../engine/quadratec/quadratec.core.js");
 
@@ -90,5 +91,20 @@ exports.download = async (req, res) => {
   } catch (error) {
     console.log("download err: ", error);
     res.status(400).json({ result: "Can't download!!" });
+  }
+};
+
+exports.stop = async (req, res) => {
+  try {
+    if (globalVariable.site === "quadratec") {
+      process.kill(-globalVariable.child.pid);
+      globalVariable.child = null;
+      globalVariable.site = null;
+    }
+  } catch (err) {
+    console.log("stop error: ", err);
+  } finally {
+    await fs.emptydir(path.join(__dirname, `../engine/quadratec/assets`));
+    res.status(201).json({ result: "Reset success!" });
   }
 };

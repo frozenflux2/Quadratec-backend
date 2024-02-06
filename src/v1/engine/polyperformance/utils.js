@@ -199,7 +199,7 @@ function refactor(data) {
           "Included / International": "",
           "Price / International": "",
           "Compare At Price / International": "",
-          Status: "",
+          Status: "active",
         };
 
         // options logic
@@ -210,7 +210,6 @@ function refactor(data) {
           i !== 0
         ) {
           tempPd["Option1 Name"] = "";
-          tempPd["Option1 Value"] = "";
         }
 
         if (oid !== 0) {
@@ -223,12 +222,14 @@ function refactor(data) {
           tempPd.Title = "";
           tempPd["Body (HTML)"] = "";
           tempPd.Vendor = "";
+          tempPd["Option1 Value"] = "";
           tempPd["Variant SKU"] = "";
           tempPd["Variant Price"] = "";
           tempPd["Variant Compare At Price"] = "";
           tempPd["Product Category"] = "";
           tempPd["Variant Requires Shipping"] = "";
           tempPd["Variant Taxable"] = "";
+          tempPd["Status"] = "";
         }
 
         refactoredData.push(tempPd);

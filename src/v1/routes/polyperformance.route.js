@@ -4,5 +4,6 @@ const polyperformanceController = require("../controllers/polyperformance.contro
 router.get("/start", polyperformanceController.start);
 router.get("/progress", polyperformanceController.progress);
 router.get("/download", polyperformanceController.download);
+router.get("/stop", polyperformanceController.stop);
 
 module.exports = router;

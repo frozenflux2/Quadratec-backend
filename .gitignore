@@ -1,2 +1,6 @@
 /.env
 /node_modules
+src/v1/engine/polyperformance/assets/
+src/v1/engine/quadratec/assets/
+public/
+src/v1/engine/polyperformance/assets (copy 1)/

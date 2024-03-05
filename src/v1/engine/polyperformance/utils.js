@@ -17,10 +17,21 @@ exports.get_progress = async () => {
   // get brands process
   let numberofbrands = 0;
   if (fs.existsSync(path.join(__dirname, "./assets/brands.json"))) {
-    progress["brands"] = 100.0;
     numberofbrands = JSON.parse(
       fs.readFileSync(path.join(__dirname, "./assets/brands.json"), "utf8")
     ).length;
+
+    progress["brands"] =
+      (JSON.parse(
+        fs.readFileSync(path.join(__dirname, "./assets/tree.json"), "utf8")
+      ).length /
+        JSON.parse(
+          fs.readFileSync(
+            path.join(__dirname, "./assets/categories.json"),
+            "utf8"
+          )
+        ).length) *
+      100;
   } else {
     return progress;
   }
@@ -61,21 +72,21 @@ function getNewData(data) {
     }
 
     if (dt["url"] !== dt["parent_url"] && dt["parent_url"] !== "") {
-      console.log("not matched parent    ", dt["url"]);
       try {
         const id = producturls.indexOf(dt["parent_url"]);
         new_data.push({
           options: new_options,
           brand: dt["brand"],
+          tree: data[id].tree,
           name: data[id]["name"],
           url: dt["url"],
           description: dt["description"],
         });
       } catch (error) {
-        console.log("------- error");
         new_data.push({
           options: new_options,
           brand: dt["brand"],
+          tree: dt.tree,
           name: dt["name"],
           url: dt["url"],
           description: dt["description"],
@@ -85,6 +96,7 @@ function getNewData(data) {
       new_data.push({
         options: new_options,
         brand: dt["brand"],
+        tree: dt.tree,
         name: dt["name"],
         url: dt["url"],
         description: dt["description"],
@@ -116,6 +128,7 @@ function removeDuplicatedData(data) {
       new_data.push({
         options: new_options,
         brand: dt["brand"],
+        tree: dt.tree,
         name: dt["name"],
         url: dt["url"],
         description: dt["description"],
@@ -133,11 +146,31 @@ function refactor(data) {
   data.forEach((dt) => {
     const handle = dt.url.split("https://www.polyperformance.com/")[1];
     const title = dt.name;
-    const body = dt.description;
+    const body = dt.description
+      .replaceAll("“", '"')
+      .replaceAll("”", '"')
+      .replaceAll("‘", "'")
+      .replaceAll("’", "'")
+      .replaceAll("–", "-")
+      .replaceAll("—", "-")
+      .replaceAll("″", '"')
+      .replaceAll(
+        "<a href=",
+        '<a style="color: blue; text-decoration: underline;" href='
+      );
+
+    let tree = "";
+    try {
+      tree = dt.tree.split("/");
+    } catch (err) {
+      console.log(dt);
+    }
+    const type = tree[tree.length - 1];
+    const tags = "Poly Performance," + tree.join(",");
     const vendor = dt.brand;
 
     dt.options.forEach((option, oid) => {
-      const skunumber = option.skuNumber;
+      const skunumber = "POL-" + option.skuNumber;
       let finalprice = option.finalprice;
       let oldprice = option.oldprice || "0";
 
@@ -161,8 +194,8 @@ function refactor(data) {
           "Body (HTML)": body,
           Vendor: vendor,
           "Product Category": "Vehicles & Parts > Vehicle Parts & Accessories",
-          Type: "",
-          Tags: "",
+          Type: type,
+          Tags: tags,
           Published: "",
           "Option1 Name": "Part #",
           "Option1 Value": optionname,
@@ -189,7 +222,7 @@ function refactor(data) {
           "Google Shopping / Custom Label 2": "",
           "Google Shopping / Custom Label 3": "",
           "Google Shopping / Custom Label 4": "",
-          "Variant Image": "",
+          "Variant Image": i === 0 ? option.images[0] : "",
           "Variant Weight Unit": "",
           "Variant Tax Code": "",
           "Cost per item": "",
@@ -212,16 +245,21 @@ function refactor(data) {
           tempPd["Option1 Name"] = "";
         }
 
+        if (dt.options.length === 1) tempPd["Option1 Value"] = "";
+
         if (oid !== 0) {
           tempPd.Title = "";
           tempPd["Body (HTML)"] = "";
           tempPd.Vendor = "";
+          tempPd.Type = "";
         }
 
         if (i !== 0) {
           tempPd.Title = "";
           tempPd["Body (HTML)"] = "";
           tempPd.Vendor = "";
+          tempPd.Type = "";
+          tempPd.Tags = "";
           tempPd["Option1 Value"] = "";
           tempPd["Variant SKU"] = "";
           tempPd["Variant Price"] = "";
@@ -276,7 +314,7 @@ function convertToCSV(data, outputPath) {
   // Here you would implement or use a library to write the CSV.
   // Since papaparse is a popular choice, this example will use it.
 
-  const csv = Papa.unparse(data);
+  const csv = "\ufeff" + Papa.unparse(data);
   fs.writeFileSync(outputPath, csv, "utf8");
   console.log(
     `The JSON data has been successfully converted to '${outputPath}'.`

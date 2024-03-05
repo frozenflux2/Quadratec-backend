@@ -105,6 +105,7 @@ exports.stop = async (req, res) => {
     console.log("stop error: ", err);
   } finally {
     await fs.emptydir(path.join(__dirname, `../engine/quadratec/assets`));
+    await fs.emptydir("./public/images");
     res.status(201).json({ result: "Reset success!" });
   }
 };

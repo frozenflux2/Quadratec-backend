@@ -7,8 +7,10 @@ function sleep(ms) {
 }
 
 async function get_brands() {
+  console.log("get brands");
   // Launch a new browser session
   const browser = await puppeteer.launch({ headless: false });
+  console.log("browser created");
 
   // Open a new page
   const page = await browser.newPage();
@@ -51,5 +53,9 @@ async function get_brands() {
 
   browser.close();
 }
+
+// (async () => {
+//   await get_brands();
+// })();
 
 module.exports = get_brands;

@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const { randomUUID } = require("crypto");
 const { exec } = require("child_process");
-require("events").EventEmitter.defaultMaxListeners = 20;
+require("events").EventEmitter.defaultMaxListeners = 32;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,6 +18,17 @@ async function get_images(product) {
       images = images.concat(op.imgs);
     });
   }
+
+  // get images from details
+  // if (product.body) {
+  //   const urlPattern = /"https:\/\/www\.quadratec\.com\/.*?"/g;
+  //   const matchedUrls = product.body.match(urlPattern);
+  //   if (matchedUrls)
+  //     matchedUrls.forEach((url) => {
+  //       images.push(url.slice(1, url.length - 1));
+  //     });
+  // }
+
   return images;
 }
 
@@ -151,13 +162,23 @@ async function get_body(page, description, details, options) {
       '<br/><span style="color: blue; text-decoration: underline;">Installation Instructions</span>';
   });
 
+  // add space before description
+  if (document.querySelector('div[class="installation-description field"]')) {
+    const element = document.querySelector(
+      'div[class="installation-description field"]'
+    );
+    element.innerHTML =
+      "<br>" +
+      element.innerHTML.replaceAll("p", "span").replaceAll("ul", "span");
+  }
   // add space before timeline
-  document
-    .querySelectorAll('div[class="installation-time field"]')
-    .forEach((ele) => {
-      const newBr = document.createElement("br");
-      ele.parentNode.insertBefore(newBr, ele);
-    });
+  else
+    document
+      .querySelectorAll('div[class="installation-time field"]')
+      .forEach((ele) => {
+        const newBr = document.createElement("br");
+        ele.parentNode.insertBefore(newBr, ele);
+      });
 
   // add space before pdf
   document.querySelectorAll('div[class="instruction-set"]').forEach((ele) => {
@@ -226,14 +247,38 @@ async function get_details(page, optionname) {
     let instock = "";
     if (instockDiv) instock = instockDiv.textContent.trim();
 
+    const tree = [];
+    document
+      .querySelector('div[class="block-content"]')
+      .querySelectorAll('span[class="breadcrumb-item"]')
+      .forEach((div) => {
+        tree.push(div.textContent.trim());
+      });
+
     const descriptionDiv = document.querySelector(
       'div[class="product-section description"]'
     );
+    // control space of description
     let description = "";
-    if (descriptionDiv)
+    if (descriptionDiv) {
+      // get last element
+      const elementHandle = Array.from(
+        descriptionDiv.querySelector('div[class="section-content"]').children
+      );
+
+      const lastelement = elementHandle[elementHandle.length - 1];
+      if (lastelement) {
+        const tagName = lastelement.tagName.toLowerCase();
+        if (tagName === "p" || tagName === "ul") {
+          const newelement = document.createElement("span");
+          newelement.innerHTML = lastelement.innerHTML;
+          lastelement.parentNode.replaceChild(newelement, lastelement);
+        }
+      }
       description = descriptionDiv
         .querySelector('div[class="section-content"]')
-        .textContent.trim();
+        .innerHTML.trim();
+    }
 
     const detailsDiv = document.querySelector('div[class="col-md-8"]');
     let weight = "";
@@ -268,8 +313,12 @@ async function get_details(page, optionname) {
       finalprice: finalprice,
       instock: instock,
       weight: weight,
+      tree: tree,
       imgs: imgs,
-      description: description,
+      description: description.replaceAll(
+        '"/sites/',
+        '"https://www.quadratec.com/sites/'
+      ),
       details: details
         .replaceAll('"/sites/', '"https://www.quadratec.com/sites/')
         .replaceAll("data-src", "src"),
@@ -518,6 +567,17 @@ async function get_product(page, metadata) {
     url: metadata["url"],
   };
 
+  // const videos = await page.evaluate(() => {
+  //   let videos = [];
+  //   document
+  //     .querySelectorAll('iframe[class="embed-player slide-media"]')
+  //     .forEach((ele) => {
+  //       videos.push(ele.outerHTML.trim());
+  //     });
+  //   return videos;
+  // });
+  // product["videos"] = videos;
+
   // add body
   const body = await get_body(
     page,
@@ -537,6 +597,8 @@ async function get_product_details(numberofprocess = 4) {
   const brands = JSON.parse(
     fs.readFileSync(path.join(__dirname, "../assets/brands.json"), "utf8")
   );
+
+  // get image table
   let image_table = {};
   if (fs.existsSync(path.join(__dirname, "../assets/image_table.json")))
     image_table = JSON.parse(
@@ -545,6 +607,21 @@ async function get_product_details(numberofprocess = 4) {
         "utf8"
       )
     );
+  else
+    fs.writeFileSync(
+      path.join(__dirname, "../assets/image_table.json"),
+      "{}",
+      "utf8"
+    );
+
+  // get image list
+  let image_list = [];
+  for (let i = 0; i < numberofprocess; i++) image_list.push([]);
+  if (fs.existsSync(path.join(__dirname, "../assets/image_list.json")))
+    image_list = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "../assets/image_list.json"), "utf8")
+    );
+
   const chunksize = Math.ceil(brands.length / numberofprocess);
 
   // create directory if data doesn't exist
@@ -552,70 +629,23 @@ async function get_product_details(numberofprocess = 4) {
     fs.mkdirSync(path.join(__dirname, "../assets/data"), { recursive: true });
 
   // create directory if images doesn't exist
-  if (!fs.existsSync("./assets/images"))
-    fs.mkdirSync("./assets/images", { recursive: true });
+  if (!fs.existsSync("./public/images"))
+    fs.mkdirSync("./public/images", { recursive: true });
 
   const browsers = [];
 
   const singleProcess = async (processnumber) => {
+    // get details
     let finished = false;
     while (!finished) {
       // Launch a new browser session
       const browser = await puppeteer.launch({ headless: false });
-      browsers.push(browser);
       // Open a new page
       const page = await browser.newPage();
       // Set the navigation timeout (in milliseconds)
-      await page.setDefaultNavigationTimeout(300000); // Timeout after 30 seconds
+      await page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
 
       try {
-        // Open a page to download
-        const download_page = await browser.newPage();
-        // Set the navigation timeout (in milliseconds)
-        await download_page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
-
-        let download_flag = false;
-        download_page.on("response", async (response) => {
-          if (
-            response.url().includes("https://www.quadratec.com/sites/") &&
-            response.request().method() === "GET"
-          ) {
-            download_flag = true;
-            const imgurl = response.url();
-            const format = imgurl.split(".")[imgurl.split(".").length - 1];
-
-            const buffer = await response.buffer(); // Gets the response body as a buffer
-
-            if (!image_table.hasOwnProperty(imgurl) && format !== "pdf") {
-              const uid = randomUUID(); // Gets the UUID
-              try {
-                fs.writeFileSync(`./assets/images/${uid}.${format}`, buffer); // Write the buffer to a file
-              } catch (error) {
-                console.log(page.url());
-                console.log(imgurl);
-                throw new Error("Page error caught:");
-              }
-
-              image_table[imgurl] = `${uid}.${format}`;
-              jsonContent = JSON.stringify(image_table, null, 2);
-              fs.writeFileSync(
-                `./assets/image_table.json`,
-                jsonContent,
-                "utf8",
-                (err) => {
-                  if (err) {
-                    console.error("An error occurred:", err);
-                    return;
-                  }
-                  console.log("JSON file has been saved.");
-                }
-              );
-            }
-
-            download_flag = false;
-          }
-        });
-
         // create directory if data doesn't exist
         if (
           !fs.existsSync(
@@ -655,16 +685,10 @@ async function get_product_details(numberofprocess = 4) {
           } catch (error) {
             console.log("New Brand:    ", brandname);
             data = [];
-            fs.writeFileSync(savedFilename, "[]", "utf8", (err) => {
-              if (err) {
-                console.error("An error occurred:", err);
-                return;
-              }
-              console.log("JSON file has been saved.");
-            });
+            fs.writeFileSync(savedFilename, "[]", "utf8");
           }
 
-          for (const mt of meta.slice(data.length)) {
+          for (const [idx, mt] of meta.slice(data.length).entries()) {
             let product = await get_product(page, mt);
 
             // handle brand error
@@ -674,28 +698,34 @@ async function get_product_details(numberofprocess = 4) {
             data.push(product);
             // download images
             const images = await get_images(product);
-            for (const img of images) {
-              if (img) {
-                const format = img.split(".")[img.split(".").length - 1];
-                if (format !== "pdf") {
-                  // wait by download page is ready
-                  while (download_flag) await sleep(300);
+            for (const img of images)
+              if (img && !image_list[processnumber].includes(img))
+                image_list[processnumber].push(img);
 
-                  await sleep(100);
-                  await download_page.goto(img);
-                }
-              }
+            // save per 100 products
+            if (idx % 10 === 0) {
+              jsonContent = JSON.stringify(image_list, null, 2);
+              fs.writeFileSync(
+                path.join(__dirname, "../assets/image_list.json"),
+                jsonContent,
+                "utf8"
+              );
+
+              jsonContent = JSON.stringify(data, null, 2);
+              fs.writeFileSync(savedFilename, jsonContent, "utf8");
             }
-
-            const jsonContent = JSON.stringify(data, null, 2);
-            fs.writeFileSync(savedFilename, jsonContent, "utf8", (err) => {
-              if (err) {
-                console.error("An error occurred:", err);
-                return;
-              }
-              console.log("JSON file has been saved.");
-            });
           }
+
+          // save the rest ones
+          jsonContent = JSON.stringify(image_list, null, 2);
+          fs.writeFileSync(
+            path.join(__dirname, "../assets/image_list.json"),
+            jsonContent,
+            "utf8"
+          );
+
+          jsonContent = JSON.stringify(data, null, 2);
+          fs.writeFileSync(savedFilename, jsonContent, "utf8");
         }
 
         browser.close();
@@ -705,6 +735,56 @@ async function get_product_details(numberofprocess = 4) {
         browser.close();
       }
     }
+
+    // download images
+    // Launch a new browser session
+    const browser = await puppeteer.launch({ headless: false });
+    // Open a page to download
+    const download_page = await browser.newPage();
+    // Set the navigation timeout (in milliseconds)
+    await download_page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
+    let download_flag = false;
+    download_page.on("response", async (response) => {
+      if (
+        response.url().includes("https://www.quadratec.com/sites/") &&
+        response.request().method() === "GET"
+      ) {
+        download_flag = true;
+        const imgurl = response.url();
+        const format = imgurl.split(".")[imgurl.split(".").length - 1];
+
+        try {
+          const buffer = await response.buffer(); // Gets the response body as a buffer
+
+          if (!image_table.hasOwnProperty(imgurl) && format !== "pdf") {
+            const uid = randomUUID(); // Gets the UUID
+            fs.writeFileSync(`./public/images/${uid}.${format}`, buffer); // Write the buffer to a file
+
+            image_table[imgurl] = `${uid}.${format}`;
+            jsonContent = JSON.stringify(image_table, null, 2);
+            fs.writeFileSync(
+              path.join(__dirname, "../assets/image_table.json"),
+              jsonContent,
+              "utf8"
+            );
+          }
+        } catch (error) {
+          console.log("image download error..   ", imgurl);
+        }
+        download_flag = false;
+      }
+    });
+    for (const img of image_list[processnumber]) {
+      // download
+      if (!image_table.hasOwnProperty(img)) {
+        while (download_flag) await sleep(300);
+
+        await sleep(100);
+        await download_page.goto(img);
+      }
+    }
+
+    await browser.close();
   };
 
   const processes = [];

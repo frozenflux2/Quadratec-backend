@@ -8,13 +8,20 @@ function sleep(ms) {
 }
 
 async function get_brands() {
+  if (
+    fs.existsSync(path.join(__dirname, "../assets/brands.json")) &&
+    fs.existsSync(path.join(__dirname, "../assets/categories.json"))
+  )
+    return;
+
+  // if not exists
   await sleep(1000);
   exec("killall chrome");
   await sleep(1000);
   exec(
     '/opt/google/chrome/chrome --profile-directory="Default" --guest --remote-debugging-port=9222'
   );
-  await sleep(1000);
+  await sleep(3000);
 
   const browserURL = "http://127.0.0.1:9222";
 
@@ -25,6 +32,7 @@ async function get_brands() {
 
   await sleep(3000);
 
+  // get brands
   const brands = await page.evaluate(() => {
     let brands = [];
     const brandDivs = document.querySelectorAll(
@@ -43,19 +51,50 @@ async function get_brands() {
     }
     return brands;
   });
+
+  // get categories
+  const categories = await page.evaluate(() => {
+    const categories = [];
+    document
+      .querySelectorAll('li[class*="ui-menu-item level0"]')
+      .forEach((div) => {
+        const categoryname = div.querySelector("a").title;
+        const categoryurl = div.querySelector("a").href;
+
+        // if it has sub categories
+        if (div.querySelector('div[class="level0 submenu"]'))
+          div
+            .querySelectorAll('li[class*="ui-menu-item level1"]')
+            .forEach((subdiv) => {
+              categories.push({
+                name: [categoryname, subdiv.querySelector("a").title],
+                url: subdiv.querySelector("a").href,
+              });
+            });
+        // else it doesn't have sub categories
+        else
+          categories.push({
+            name: [categoryname],
+            url: [categoryurl],
+          });
+      });
+
+    return categories.slice(2, categories.length - 3);
+  });
+
   exec("killall chrome");
-  const jsonContent = JSON.stringify(brands, null, 2);
+  jsonContent = JSON.stringify(brands, null, 2);
   fs.writeFileSync(
     path.join(__dirname, "../assets/brands.json"),
     jsonContent,
-    "utf8",
-    (err) => {
-      if (err) {
-        console.error("An error occurred:", err);
-        return;
-      }
-      console.log("JSON file has been saved.");
-    }
+    "utf8"
+  );
+
+  jsonContent = JSON.stringify(categories, null, 2);
+  fs.writeFileSync(
+    path.join(__dirname, "../assets/categories.json"),
+    jsonContent,
+    "utf8"
   );
 }
 

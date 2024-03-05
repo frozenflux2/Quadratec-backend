@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const Papa = require("papaparse"); // Including papaparse for CSV operations
 const JSZip = require("jszip");
+const puppeteer = require("puppeteer");
+const { randomUUID } = require("crypto");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -181,19 +183,26 @@ function getNewData(data) {
           new_options.push(op);
       }
       // if (new_options.length > 1) new_options = new_options.slice(1);
-      let new_body = dt.body;
+      let new_body = dt.body
+        .replace(
+          '<html><head></head><body>\n<div >\n<div   id="learn" ><br><h2>Learn More</h2>',
+          '<html><head></head><body>\n<div >\n<div   id="learn" ><h2>Learn More</h2>'
+        )
+        .replace('<div   id="vehicles" ><br><h2>Fitment</h2></div>', "");
+
       if (
         dt.body.includes(
           '<div   id="learn" ><br><h2>Learn More</h2>\n<div >\n<div >\n'
         )
       )
-        new_body = dt.body.replace("<div ><br><h3>", "<div ><h3>");
+        new_body = new_body.replace("<div ><br><h3>", "<div ><h3>");
 
       new_data.push({
         options: new_options,
         optionnames: dt["optionnames"],
         brand: dt["brand"],
         category: dt["category"],
+        tree: dt.options[0].tree,
         title: dt["title"],
         url: dt["url"],
         body: new_body,
@@ -240,6 +249,7 @@ function addImages(data) {
       optionnames: dt["optionnames"],
       brand: dt["brand"],
       category: dt["category"],
+      tree: dt.tree,
       title: dt["title"],
       url: dt["url"],
       body: dt["body"],
@@ -251,7 +261,7 @@ function addImages(data) {
 
 async function convertImages(data) {
   const image_table = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "../assets/image_table.json"), "utf8")
+    fs.readFileSync(path.join(__dirname, "./assets/image_table.json"), "utf8")
   );
 
   const browser = await puppeteer.launch({ headless: false });
@@ -275,7 +285,7 @@ async function convertImages(data) {
       if (!image_table.hasOwnProperty(imgurl) && format !== "pdf") {
         const uid = randomUUID(); // Gets the UUID
         try {
-          fs.writeFileSync(`./assets/images/${uid}.${format}`, buffer); // Write the buffer to a file
+          fs.writeFileSync(`./public/images/${uid}.${format}`, buffer); // Write the buffer to a file
         } catch (error) {
           console.log(page.url());
           console.log(imgurl);
@@ -285,16 +295,9 @@ async function convertImages(data) {
         image_table[imgurl] = `${uid}.${format}`;
         jsonContent = JSON.stringify(image_table, null, 2);
         fs.writeFileSync(
-          `./assets/image_table.json`,
+          path.join(__dirname, "./assets/image_table.json"),
           jsonContent,
-          "utf8",
-          (err) => {
-            if (err) {
-              console.error("An error occurred:", err);
-              return;
-            }
-            console.log("JSON file has been saved.");
-          }
+          "utf8"
         );
       }
 
@@ -304,6 +307,7 @@ async function convertImages(data) {
 
   const new_data = [];
 
+  let empty_imgs = 0;
   for (const dt of data) {
     const new_options = [];
     // convert images from options
@@ -311,16 +315,29 @@ async function convertImages(data) {
       const new_images = [];
 
       for (const img of option.imgs) {
-        if (!image_table[img]) {
-          console.log("image not found", img, dt.url, option.imgs, dt.brand);
-          // wait by download page is ready
-          while (download_flag) await sleep(300);
+        if (!img.includes("data:image/gif;")) {
+          if (
+            !image_table[img] ||
+            !fs.existsSync(`./public/images/${image_table[img]}`)
+          ) {
+            if (empty_imgs > 100) {
+              await browser.close();
+              throw new Error(
+                "Image not found exception: Too many images are empty"
+              );
+            }
+            console.log("image not found", img, dt.url, option.imgs, dt.brand);
+            // wait by download page is ready
+            while (download_flag) await sleep(300);
 
-          await sleep(100);
-          await download_page.goto(img);
-          await sleep(1000);
+            await sleep(100);
+            await download_page.goto(img);
+            await sleep(1000);
+
+            empty_imgs++;
+          }
+          new_images.push(`https://model.ngrok.dev/images/${image_table[img]}`);
         }
-        new_images.push(`https://model.ngrok.dev/images/${image_table[img]}`);
       }
       new_options.push({
         catalognumber: option.catalognumber,
@@ -338,6 +355,7 @@ async function convertImages(data) {
       options: new_options,
       optionnames: dt["optionnames"],
       brand: dt["brand"],
+      tree: dt.tree,
       category: dt["category"],
       title: dt["title"],
       url: dt["url"],
@@ -357,13 +375,28 @@ function refactor(data) {
     const seperatedurl = dt.url.split("/");
     const handle = seperatedurl[seperatedurl.length - 1];
     const title = dt.title;
-    const body = dt.body;
+    const body = dt.body
+      .replaceAll("“", '"')
+      .replaceAll("”", '"')
+      .replaceAll("‘", "'")
+      .replaceAll("’", "'")
+      .replaceAll("–", "-")
+      .replaceAll("—", "-")
+      .replaceAll("″", '"');
+    const type = dt.tree[dt.tree.length - 2];
+    const tags =
+      "Quadratec," +
+      dt.tree
+        .slice(1, dt.tree.length - 1)
+        .map((ele) => ele.replaceAll(",", ""))
+        .join(",")
+        .replace("Jeep ", "");
     const vendor = dt.brand;
     const optionnames = dt.optionnames;
 
     dt.options.forEach((option, oid) => {
       const mfgnumber = option.mfgnumber;
-      const catalognumber = option.catalognumber;
+      const catalognumber = "QUA-" + option.catalognumber;
       const weight = parseWeight(option.weight);
       let finalprice = option.finalprice;
       let oldprice = option.oldprice;
@@ -388,8 +421,8 @@ function refactor(data) {
           "Body (HTML)": body,
           Vendor: vendor,
           "Product Category": "Vehicles & Parts > Vehicle Parts & Accessories",
-          Type: "",
-          Tags: "",
+          Type: type,
+          Tags: tags,
           Published: "",
           "Option1 Name": "",
           "Option1 Value": "",
@@ -425,7 +458,7 @@ function refactor(data) {
           "Google Shopping / Custom Label 2": "",
           "Google Shopping / Custom Label 3": "",
           "Google Shopping / Custom Label 4": "",
-          "Variant Image": "",
+          "Variant Image": i === 0 ? option.imgs[0] : "",
           "Variant Tax Code": "",
           "Cost per item": "",
           "Included / United States": "TRUE",
@@ -454,6 +487,8 @@ function refactor(data) {
           tempPd.Title = "";
           tempPd["Body (HTML)"] = "";
           tempPd.Vendor = "";
+          tempPd.Type = "";
+          tempPd.Tags = "";
           tempPd["Variant SKU"] = "";
           tempPd["Variant Inventory Tracker"] = "";
           tempPd["Variant Inventory Policy"] = "";
@@ -478,6 +513,7 @@ function refactor(data) {
           tempPd.Title = "";
           tempPd["Body (HTML)"] = "";
           tempPd.Vendor = "";
+          tempPd.Type = "";
           tempPd["Option1 Name"] = "";
           tempPd["Option2 Name"] = "";
           tempPd["Option3 Name"] = "";
@@ -510,12 +546,7 @@ function convertToCSV(data, outputPath) {
   // Here you would implement or use a library to write the CSV.
   // Since papaparse is a popular choice, this example will use it.
 
-  const bom = "\uFEFF";
-  const csv =
-    bom +
-    Papa.unparse(data, {
-      encoding: "utf-8",
-    });
+  const csv = "\ufeff" + Papa.unparse(data);
   fs.writeFileSync(outputPath, csv, "utf8");
   console.log(
     `The JSON data has been successfully converted to '${outputPath}'.`
@@ -564,7 +595,7 @@ exports.getCSV = async () => {
   console.log(convertedData.length);
 
   const refactoredData = refactor(convertedData);
-  convertToCSV(refactoredData, "./assets/output.csv");
+  convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
 
   try {
     await zipFile(

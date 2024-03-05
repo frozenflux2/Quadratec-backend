@@ -133,6 +133,7 @@ async function get_details(page, metadata, brandname) {
     return options;
   });
 
+  // get details
   const description = await page.evaluate(() => {
     const descriptionElement = document.querySelector(
       ".product.attribute.description"
@@ -140,6 +141,19 @@ async function get_details(page, metadata, brandname) {
     let description = descriptionElement.innerHTML.trim();
     return description;
   });
+
+  // get tree using regex pattern
+  const html = await page.content();
+  const pattern = /window\.google_tag_params\.ecomm_category\s*=\s*'([^']+)'/i;
+  const match = pattern.exec(html);
+  const tree = match[1];
+
+  // get tree
+  // const tree = await page.evaluate(() => {
+  //   return document
+  //     .querySelector('button[title="Add to Cart"]')
+  //     .getAttribute("data-category");
+  // });
 
   // get details by option
   let options = [];
@@ -207,6 +221,7 @@ async function get_details(page, metadata, brandname) {
   const product = {
     options: options,
     brand: brandname,
+    tree: tree,
     name: metadata["name"],
     url: metadata["url"],
     description: description,
@@ -226,7 +241,7 @@ async function get_product_deatils() {
       exec(
         '/opt/google/chrome/chrome --profile-directory="Default" --guest --remote-debugging-port=9222'
       );
-      await sleep(1000);
+      await sleep(3000);
 
       const browserURL = "http://127.0.0.1:9222";
 
@@ -241,6 +256,12 @@ async function get_product_deatils() {
 
       const metadata = JSON.parse(
         fs.readFileSync(path.join(__dirname, "../assets/metadata.json"), "utf8")
+      );
+      const tree_table = JSON.parse(
+        fs.readFileSync(
+          path.join(__dirname, "../assets/tree_table.json"),
+          "utf8"
+        )
       );
 
       let numberoffiles = fs.readdirSync(
@@ -269,19 +290,19 @@ async function get_product_deatils() {
           fs.writeFileSync(
             path.join(__dirname, `../assets/data/${brandname}.json`),
             "[]",
-            "utf8",
-            (err) => {
-              if (err) {
-                console.error("An error occurred:", err);
-                return;
-              }
-              console.log("JSON file has been saved.");
-            }
+            "utf8"
           );
         }
 
         for (const mt of brand["products"].slice(data.length)) {
-          data.push(await get_details(page, mt, brandname));
+          let product = await get_details(page, mt, brandname);
+
+          if (tree_table[product.name]) {
+            console.log("tree exists");
+            product.tree = tree_table[product.name].tree.join("/");
+          }
+
+          data.push(product);
 
           const jsonContent = JSON.stringify(data, null, 2);
           fs.writeFileSync(

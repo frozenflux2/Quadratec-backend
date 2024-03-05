@@ -49,7 +49,7 @@ async function get_product_metadata() {
       exec(
         '/opt/google/chrome/chrome --profile-directory="Default" --guest --remote-debugging-port=9222'
       );
-      await sleep(1000);
+      await sleep(3000);
 
       const browserURL = "http://127.0.0.1:9222";
 

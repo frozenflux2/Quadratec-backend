@@ -336,7 +336,7 @@ async function convertImages(data) {
 
             empty_imgs++;
           }
-          new_images.push(`https://model.ngrok.dev/images/${image_table[img]}`);
+          new_images.push(`https://gof.ngrok.app/images/${image_table[img]}`);
         }
       }
       new_options.push({

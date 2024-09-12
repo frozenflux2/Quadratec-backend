@@ -19,6 +19,7 @@
     "nodemon": "^2.0.18",
     "papaparse": "^5.4.1",
     "path": "^0.12.7",
-    "puppeteer": "^21.7.0"
+    "puppeteer": "^21.7.0",
+    "xlsx": "^0.18.5"
   }
 }

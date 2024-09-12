@@ -55,7 +55,7 @@ async function get_categories(numberofprocess = 4) {
     let finished = false;
     while (!finished) {
       // Launch a new browser session
-      const browser = await puppeteer.launch({ headless: false });
+      const browser = await puppeteer.launch({ headless: "NEW" });
       browsers.push(browser);
       // Open a new page
       const page = await browser.newPage();

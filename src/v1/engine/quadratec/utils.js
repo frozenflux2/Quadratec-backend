@@ -4,6 +4,7 @@ const Papa = require("papaparse"); // Including papaparse for CSV operations
 const JSZip = require("jszip");
 const puppeteer = require("puppeteer");
 const { randomUUID } = require("crypto");
+const XLSX = require("xlsx");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -206,6 +207,7 @@ function getNewData(data) {
         title: dt["title"],
         url: dt["url"],
         body: new_body,
+        body_changed: dt["body_changed"],
       });
     }
   }
@@ -236,6 +238,7 @@ function addImages(data) {
         mfgnumber: option.mfgnumber,
         oldprice: option.oldprice,
         finalprice: option.finalprice,
+        suffix: option.suffix,
         instock: option.instock,
         weight: option.weight,
         imgs: new_images,
@@ -253,6 +256,7 @@ function addImages(data) {
       title: dt["title"],
       url: dt["url"],
       body: dt["body"],
+      body_changed: dt["body_changed"],
     });
   }
 
@@ -337,6 +341,7 @@ async function convertImages(data) {
             empty_imgs++;
           }
           new_images.push(`https://gof.ngrok.app/images/${image_table[img]}`);
+          // new_images.push(image_table[img]);
         }
       }
       new_options.push({
@@ -344,6 +349,7 @@ async function convertImages(data) {
         mfgnumber: option.mfgnumber,
         oldprice: option.oldprice,
         finalprice: option.finalprice,
+        suffix: option.suffix,
         instock: option.instock,
         weight: option.weight,
         imgs: new_images,
@@ -360,6 +366,7 @@ async function convertImages(data) {
       title: dt["title"],
       url: dt["url"],
       body: dt.body,
+      body_changed: dt.body_changed,
     });
   }
 
@@ -383,7 +390,9 @@ function refactor(data) {
       .replaceAll("–", "-")
       .replaceAll("—", "-")
       .replaceAll("″", '"');
+    if (body.length > 32767) console.log("body characters over", dt.url);
     const type = dt.tree[dt.tree.length - 2];
+
     const tags =
       "Quadratec," +
       dt.tree
@@ -394,11 +403,19 @@ function refactor(data) {
     const vendor = dt.brand;
     const optionnames = dt.optionnames;
 
+    const body_changed = dt["body_changed"];
+    let status = "active";
+    if (body_changed) {
+      console.log("body changed", dt.url);
+      status = "draft";
+    }
+
     dt.options.forEach((option, oid) => {
       const mfgnumber = option.mfgnumber;
       const catalognumber = "QUA-" + option.catalognumber;
       const weight = parseWeight(option.weight);
       let finalprice = option.finalprice;
+      if (finalprice === "") console.log(dt.url);
       let oldprice = option.oldprice;
       if (oldprice === "") oldprice = finalprice;
 
@@ -414,6 +431,10 @@ function refactor(data) {
         inventorypolicy = "deny";
       }
       const optionvalues = option.values;
+
+      const optionsuffix = option["suffix"];
+      const suffixtags = tags + `${optionsuffix ? `,${optionsuffix}` : ""}`;
+
       option.imgs.forEach((img, i) => {
         let tempPd = {
           Handle: handle,
@@ -422,7 +443,7 @@ function refactor(data) {
           Vendor: vendor,
           "Product Category": "Vehicles & Parts > Vehicle Parts & Accessories",
           Type: type,
-          Tags: tags,
+          Tags: suffixtags,
           Published: "",
           "Option1 Name": "",
           "Option1 Value": "",
@@ -467,6 +488,7 @@ function refactor(data) {
           "Included / International": "TRUE",
           "Price / International": "",
           "Compare At Price / International": "",
+          Status: status,
         };
 
         // options logic
@@ -507,6 +529,7 @@ function refactor(data) {
           tempPd["Variant Weight Unit"] = "";
           tempPd["Included / United States"] = "";
           tempPd["Included / International"] = "";
+          tempPd["Status"] = "";
         }
 
         if (oid > 0) {
@@ -595,6 +618,16 @@ exports.getCSV = async () => {
   console.log(convertedData.length);
 
   const refactoredData = refactor(convertedData);
+  // const worksheet = XLSX.utils.json_to_sheet(refactoredData);
+  // const workbook = XLSX.utils.book_new();
+  // XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+
+  // Convert the workbook to a binary buffer
+  // const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+  // Use fs to write the file to your system
+  // console.log(path.join(__dirname, "./assets/output.xlsx"));
+  // fs.writeFileSync(path.join(__dirname, "./assets/output.xlsx"), buffer);
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
 
   try {

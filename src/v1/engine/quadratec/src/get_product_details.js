@@ -10,6 +10,58 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function trimHtml(html, maxLength) {
+  const dom = new JSDOM(html);
+  const document = dom.window.document; // Get the document
+  const NodeFilter = dom.window.NodeFilter;
+
+  let walk = document.createTreeWalker(
+    document.body,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false
+  );
+  let charCount = 0;
+  let toRemove = [];
+
+  while (walk.nextNode()) {
+    let current = walk.currentNode;
+    let textLength = current.textContent.length;
+
+    if (charCount + textLength > maxLength) {
+      // Cut the text node
+      current.textContent = current.textContent.substring(
+        0,
+        maxLength - charCount
+      );
+      // Remember nodes to remove
+      let next = current;
+      while ((next = next.nextSibling)) {
+        toRemove.push(next);
+      }
+      break;
+    }
+
+    charCount += textLength;
+    console.log(charCount);
+    await sleep(10);
+  }
+
+  // Remove extra nodes
+  toRemove.forEach((node) => node.parentNode.removeChild(node));
+
+  // Clean up empty tags
+  let tags = document.body.getElementsByTagName("*");
+  let i = tags.length;
+  while (i--) {
+    if (tags[i].childNodes.length === 0) {
+      tags[i].parentNode.removeChild(tags[i]);
+    }
+  }
+
+  return dom.serialize();
+}
+
 async function get_images(product) {
   let images = [];
   if (Array.isArray(product.options)) {
@@ -117,13 +169,18 @@ async function get_body(page, description, details, options) {
     }
   });
 
-  if (specs_content.length > 1)
-    document.getElementById("specs").innerHTML =
-      "<br><h2>Specs</h2>" + specs_content;
-  else if (document.getElementById("specs"))
-    document.getElementById("specs").innerHTML = document
+  const specsDiv = document.getElementById("specs");
+  let originalSpecsContent = "";
+  if (specsDiv) {
+    originalSpecsContent = document
       .getElementById("specs")
       .innerHTML.replace("ul", "span");
+    if (specs_content.length > 1)
+      document.getElementById("specs").innerHTML =
+        "<br><h2>Specs</h2>" + specs_content;
+    else if (document.getElementById("specs"))
+      document.getElementById("specs").innerHTML = originalSpecsContent;
+  }
 
   // control Fitment
   const fitmentDiv = document.getElementById("vehicles");
@@ -133,6 +190,7 @@ async function get_body(page, description, details, options) {
     // fitmentDiv.innerHTML = fitmentDiv.innerHTML.trim().replaceAll("ul", "span");
 
     // contorl h3 tag
+    let numberOflist = 0;
     fitmentDiv
       .querySelectorAll('ul[class="list-unstyled"]')
       .forEach((div, idx) => {
@@ -142,9 +200,15 @@ async function get_body(page, description, details, options) {
         let space = "<br>";
         if (idx === 0) space = "";
         fitment_content += space + div.outerHTML;
+
+        numberOflist++;
       });
 
-    fitmentDiv.innerHTML = fitment_content.replaceAll("ul", "span");
+    const divArray = fitmentDiv.innerHTML.split("</ul></div>");
+    const extraText = divArray[divArray.length - 1];
+    fitmentDiv.innerHTML =
+      fitment_content.replaceAll("ul", "span") +
+      `${extraText ? `<br/>${extraText}` : ""}`;
   }
 
   // control skill
@@ -169,7 +233,7 @@ async function get_body(page, description, details, options) {
     );
     element.innerHTML =
       "<br>" +
-      element.innerHTML.replaceAll("p", "span").replaceAll("ul", "span");
+      element.innerHTML.replaceAll("p>", "span>").replaceAll("ul>", "span>");
   }
   // add space before timeline
   else
@@ -202,8 +266,7 @@ async function get_body(page, description, details, options) {
       }
       // else lastelement.insertAdjacentHTML("afterend", "<br />");
     });
-
-  return dom
+  let body = dom
     .serialize()
     .replace(/<ul id="product-tabs"[^]*?<\/ul>/gi, description)
     .replace(/class=".*?"/g, "")
@@ -212,6 +275,41 @@ async function get_body(page, description, details, options) {
     .replace(/itemtype=".*?"/g, "")
     .replace(/itemscope=".*?"/g, "")
     .replace(/itemprop=".*?"/g, "");
+
+  // adjust number of body characters
+  let body_changed = false;
+  if (body.length > 32760) {
+    if (document.getElementById("specs"))
+      document.getElementById("specs").innerHTML = originalSpecsContent;
+    body = dom
+      .serialize()
+      .replace(/<ul id="product-tabs"[^]*?<\/ul>/gi, description)
+      .replace(/class=".*?"/g, "")
+      .replace(/aria-labelledby=".*?"/g, "")
+      .replace(/role=".*?"/g, "")
+      .replace(/itemtype=".*?"/g, "")
+      .replace(/itemscope=".*?"/g, "")
+      .replace(/itemprop=".*?"/g, "");
+
+    if (body.length > 32760) {
+      console.log("original character over");
+
+      document.body.innerHTML = document.body.innerHTML.trim().slice(0, 32700);
+      body = dom
+        .serialize()
+        .replace(/<ul id="product-tabs"[^]*?<\/ul>/gi, description)
+        .replace(/class=".*?"/g, "")
+        .replace(/aria-labelledby=".*?"/g, "")
+        .replace(/role=".*?"/g, "")
+        .replace(/itemtype=".*?"/g, "")
+        .replace(/itemscope=".*?"/g, "")
+        .replace(/itemprop=".*?"/g, "");
+    }
+
+    body_changed = true;
+  }
+
+  return { body: body, body_changed: body_changed };
 }
 
 async function get_details(page, optionname) {
@@ -239,9 +337,20 @@ async function get_details(page, optionname) {
     let oldprice = "";
     if (msrpDiv) oldprice = msrpDiv.textContent.trim().slice(5);
 
-    const priceDiv = ele.querySelector('div[class="best-price"]');
+    // const priceDiv = ele.querySelector('div[class="best-price"]');
+    const priceDiv = ele.querySelector(
+      'div[class="best-price mutate-price-l8tj0hgxp"]'
+    );
     let finalprice = "";
     if (priceDiv) finalprice = priceDiv.textContent.trim().slice(1);
+    else {
+      const bestpriceDiv = ele.querySelector('div[class="best-price"]');
+      if (bestpriceDiv) finalprice = bestpriceDiv.textContent.trim().slice(1);
+    }
+
+    const suffixDiv = ele.querySelector('div[class="pricing-suffix"]');
+    let suffix = "";
+    if (suffixDiv) suffix = suffixDiv.textContent.trim().replace("Plus ", "");
 
     const instockDiv = ele.querySelector('div[class*="stock-status"]');
     let instock = "";
@@ -266,18 +375,31 @@ async function get_details(page, optionname) {
         descriptionDiv.querySelector('div[class="section-content"]').children
       );
 
-      const lastelement = elementHandle[elementHandle.length - 1];
-      if (lastelement) {
-        const tagName = lastelement.tagName.toLowerCase();
-        if (tagName === "p" || tagName === "ul") {
-          const newelement = document.createElement("span");
-          newelement.innerHTML = lastelement.innerHTML;
-          lastelement.parentNode.replaceChild(newelement, lastelement);
+      if (elementHandle.length > 0) {
+        const lastelement = elementHandle[elementHandle.length - 1];
+        if (lastelement) {
+          const tagName = lastelement.tagName.toLowerCase();
+          if (tagName === "p" || tagName === "ul") {
+            const newelement = document.createElement("span");
+            newelement.innerHTML = lastelement.innerHTML;
+            lastelement.parentNode.replaceChild(newelement, lastelement);
+          }
         }
       }
+
       description = descriptionDiv
         .querySelector('div[class="section-content"]')
         .innerHTML.trim();
+
+      // if there is CARB info
+      const carbDiv = descriptionDiv.querySelector(
+        'div[class="panel panel-default"]'
+      );
+      if (carbDiv)
+        description +=
+          "<div><br/><h3>CARB Notice</h3>" +
+          carbDiv.querySelector('ul[class="list-group"]').innerHTML.trim() +
+          "</div>";
     }
 
     const detailsDiv = document.querySelector('div[class="col-md-8"]');
@@ -311,6 +433,7 @@ async function get_details(page, optionname) {
       mfgnumber: mfgnumber,
       oldprice: oldprice,
       finalprice: finalprice,
+      suffix: suffix,
       instock: instock,
       weight: weight,
       tree: tree,
@@ -381,7 +504,6 @@ async function get_option_details(nid, product_id, values) {
     .then((data) => {
       return data;
     });
-
   // Create a new instance of the DOMParser
   const details_dom = new JSDOM(details_content);
 
@@ -411,10 +533,16 @@ async function get_option_details(nid, product_id, values) {
   if (msrpDiv) oldprice = msrpDiv.textContent.trim().slice(5);
 
   const priceDiv = details_dom.window.document.querySelector(
-    'div[class="best-price"]'
+    'div[class="pricing-row cart_price"]'
   );
   let finalprice = "";
-  if (priceDiv) finalprice = priceDiv.textContent.trim().slice(1);
+  if (priceDiv) finalprice = priceDiv.textContent.trim().slice(14);
+
+  const suffixDiv = details_dom.window.document.querySelector(
+    'div[class="pricing-suffix"]'
+  );
+  let suffix = "";
+  if (suffixDiv) suffix = suffixDiv.textContent.trim().replace("Plus ", "");
 
   const instockDiv = details_dom.window.document.querySelector(
     'div[class*="stock-status"]'
@@ -427,6 +555,7 @@ async function get_option_details(nid, product_id, values) {
     mfgnumber: mfgnumber,
     oldprice: oldprice,
     finalprice: finalprice,
+    suffix: suffix,
     instock: instock,
     weight: weight,
     imgs: [img],
@@ -521,8 +650,14 @@ async function get_product(page, metadata) {
     const cancelDiv = document.querySelector('div[class="cancelled-banner"]');
     return cancelDiv;
   });
+  const closeDiv = await page.evaluate(() => {
+    const closeDiv = document.querySelector(
+      'div[class="product-not-available"]'
+    );
+    return closeDiv;
+  });
 
-  if (cancelDiv) {
+  if (cancelDiv || closeDiv) {
     console.log("empty  ", metadata["url"]);
 
     return {
@@ -548,15 +683,43 @@ async function get_product(page, metadata) {
   const optionmetadata = await get_options(page);
 
   for (const md of optionmetadata.values) {
-    optionData.push(
-      await get_option_details(
+    let optionDetails = await get_option_details(
+      optionmetadata["nid"],
+      md["product_id"],
+      md["values"]
+    );
+
+    // iter till final price
+    let iter = 0;
+    while (!optionDetails.finalprice && iter < 3) {
+      console.log(`final price error ${metadata["url"]} ${md["values"]}`);
+      optionDetails = await get_option_details(
         optionmetadata["nid"],
         md["product_id"],
         md["values"]
-      )
-    );
+      );
+
+      iter++;
+    }
+    if (optionDetails.finalprice) optionData.push(optionDetails);
   }
 
+  // check optionData
+  if (Array.isArray(optionData)) {
+    if (optionData.length > 1) {
+      optionData.slice(1).forEach((op) => {
+        if (!op.finalprice) {
+          console.log(`final price error ${metadata["url"]}`);
+          throw new Error("empty final price");
+        }
+      });
+    } else {
+      if (!optionData[0].finalprice) {
+        console.log(`final price error ${metadata["url"]}`);
+        throw new Error("empty final price");
+      }
+    }
+  }
   product = {
     options: optionData,
     optionnames: optionmetadata.names,
@@ -579,13 +742,14 @@ async function get_product(page, metadata) {
   // product["videos"] = videos;
 
   // add body
-  const body = await get_body(
+  const { body, body_changed } = await get_body(
     page,
     optionData[0].description,
     optionData[0].details,
     optionData.slice(1)
   );
   product["body"] = body;
+  product["body_changed"] = body_changed;
 
   return product;
 }
@@ -639,7 +803,10 @@ async function get_product_details(numberofprocess = 4) {
     let finished = false;
     while (!finished) {
       // Launch a new browser session
-      const browser = await puppeteer.launch({ headless: false });
+      const browser = await puppeteer.launch({
+        headless: false,
+        timeout: 60000,
+      });
       // Open a new page
       const page = await browser.newPage();
       // Set the navigation timeout (in milliseconds)
@@ -738,7 +905,7 @@ async function get_product_details(numberofprocess = 4) {
 
     // download images
     // Launch a new browser session
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({ headless: "NEW", timeout: 60000 });
     // Open a page to download
     const download_page = await browser.newPage();
     // Set the navigation timeout (in milliseconds)
@@ -826,3 +993,34 @@ async function get_product_details(numberofprocess = 4) {
 }
 
 module.exports = get_product_details;
+
+/*
+(async () => {
+  // Launch a new browser session
+  const browser = await puppeteer.launch({ headless: false });
+  // Open a new page
+  const page = await browser.newPage();
+  // Set the navigation timeout (in milliseconds)
+  await page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
+
+  const metadata = {
+    brand: "JKS Manufacturing",
+    category: "JKS Manufacturing Lift Kits & Suspension",
+    "category url":
+      "https://www.quadratec.com/brand/jks-manufacturing/lift-kits-and-suspension",
+    title:
+      'JKS Manufacturing PAC2111 Flex Connect Disconnecting Sway Bar Link Kit for 07-18 Jeep Wrangler JK with 2-5" Lift',
+    url: "https://www.quadratec.com/products/16160_0009_14.htm",
+    finalprice: "$415.99",
+    oldprice: "",
+    instock: false,
+  };
+
+  const response = await get_product(page, metadata);
+  fs.writeFileSync("test.json", JSON.stringify(response, null, 2), "utf8");
+  fs.writeFileSync("test.html", response.body, "utf8");
+
+  await browser.close();
+  // console.log(response);
+})();
+//*/

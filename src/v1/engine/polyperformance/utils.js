@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { JSDOM } = require("jsdom");
 const path = require("path");
 const Papa = require("papaparse"); // Including papaparse for CSV operations
 const JSZip = require("jszip");
@@ -146,7 +147,7 @@ function refactor(data) {
   data.forEach((dt) => {
     const handle = dt.url.split("https://www.polyperformance.com/")[1];
     const title = dt.name;
-    const body = dt.description
+    let body = dt.description
       .replaceAll("“", '"')
       .replaceAll("”", '"')
       .replaceAll("‘", "'")
@@ -158,6 +159,17 @@ function refactor(data) {
         "<a href=",
         '<a style="color: blue; text-decoration: underline;" href='
       );
+
+    let status = "active";
+    if (body.length > 32767) {
+      console.log("character over", dt.url);
+      const dom = new JSDOM(body);
+      const document = dom.window.document;
+
+      document.body.innerHTML = document.body.innerHTML.trim().slice(0, 32700);
+      body = dom.serialize();
+      status = "draft";
+    }
 
     let tree = "";
     try {
@@ -185,6 +197,14 @@ function refactor(data) {
       if (num_oldprice === 0 || num_oldprice < num_finalprice) {
         oldprice = finalprice;
       }
+      let inventorytracker = "";
+      let inventorypolicy = "";
+      if (option["stock"] === "instock") inventorypolicy = "continue";
+      else {
+        inventorytracker = "shopify";
+        inventorypolicy = "deny";
+      }
+
       const optionname = option.skuNumber;
 
       option.images.forEach((img, i) => {
@@ -200,6 +220,9 @@ function refactor(data) {
           "Option1 Name": "Part #",
           "Option1 Value": optionname,
           "Variant SKU": skunumber,
+          "Variant Inventory Tracker": inventorytracker,
+          "Variant Inventory Policy": inventorypolicy,
+          "Variant Fulfillment Service": "manual",
           "Variant Price": finalprice,
           "Variant Compare At Price": oldprice,
           "Variant Requires Shipping": "TRUE",
@@ -208,7 +231,7 @@ function refactor(data) {
           "Image Src": img,
           "Image Position": i + 1,
           "Image Alt Text": "",
-          "Gift Card": "",
+          "Gift Card": "FALSE",
           "SEO Title": "",
           "SEO Description": "",
           "Google Shopping / Google Product Category": "",
@@ -226,13 +249,13 @@ function refactor(data) {
           "Variant Weight Unit": "",
           "Variant Tax Code": "",
           "Cost per item": "",
-          "Included / United States": "",
+          "Included / United States": "TRUE",
           "Price / United States": "",
           "Compare At Price / United States": "",
-          "Included / International": "",
+          "Included / International": "TRUE",
           "Price / International": "",
           "Compare At Price / International": "",
-          Status: "active",
+          Status: status,
         };
 
         // options logic
@@ -264,7 +287,12 @@ function refactor(data) {
           tempPd["Variant SKU"] = "";
           tempPd["Variant Price"] = "";
           tempPd["Variant Compare At Price"] = "";
+          tempPd["Variant Inventory Policy"] = "";
           tempPd["Product Category"] = "";
+          tempPd["Included / United States"] = "";
+          tempPd["Included International"] = "";
+          tempPd["Gift Card"] = "";
+          tempPd["Variant Fulfillment Service"] = "";
           tempPd["Variant Requires Shipping"] = "";
           tempPd["Variant Taxable"] = "";
           tempPd["Status"] = "";
@@ -342,7 +370,9 @@ exports.getCSV = async () => {
   const newData = getNewData(data);
   const removedData = removeDuplicatedData(newData);
   const refactoredData = refactor(removedData);
+
   convertToCSV(refactoredData, path.join(__dirname, "./assets/output.csv"));
+
   try {
     await zipFile(
       path.join(__dirname, "./assets/output.csv"),

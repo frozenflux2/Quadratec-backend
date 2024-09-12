@@ -10,7 +10,7 @@ function sleep(ms) {
 
 async function getbyoption(page, optionname) {
   let productData = await page.evaluate(() => {
-    const skuDiv = document.querySelector('div[itemprop="sku"]');
+    const skuDiv = document.querySelector('div[class="product attribute sku"]');
 
     const finalpriceDiv = document.querySelector(
       'span[data-price-type="finalPrice"]'
@@ -19,7 +19,7 @@ async function getbyoption(page, optionname) {
       'span[class="old-price sly-old-price no-display"]'
     );
 
-    let skuNumber = skuDiv ? skuDiv.textContent : "";
+    let skuNumber = skuDiv ? skuDiv.textContent.trim().split("SKU ")[1] : "";
     let finalprice = finalpriceDiv
       ? finalpriceDiv.textContent.replace("$", "")
       : "";
@@ -33,7 +33,17 @@ async function getbyoption(page, optionname) {
           .textContent.replace("$", "");
     }
 
-    return { skuNumber: skuNumber, finalprice: finalprice, oldprice: oldprice };
+    const stockDiv = document.querySelector(
+      'meta[property="product:availability"]'
+    );
+    const stock = stockDiv ? stockDiv.content : "";
+
+    return {
+      skuNumber: skuNumber,
+      finalprice: finalprice,
+      oldprice: oldprice,
+      stock: stock,
+    };
   });
 
   // get images

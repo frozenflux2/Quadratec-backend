@@ -287,6 +287,7 @@ function refactor(data) {
           tempPd["Variant SKU"] = "";
           tempPd["Variant Price"] = "";
           tempPd["Variant Compare At Price"] = "";
+          tempPd["Variant Inventory Tracker"] = "";
           tempPd["Variant Inventory Policy"] = "";
           tempPd["Product Category"] = "";
           tempPd["Included / United States"] = "";

@@ -10,6 +10,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function arraysEqual(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function countElementInList(target, elemntList) {
+  let count = 0;
+
+  elemntList.forEach((ele) => {
+    if (ele === target) count++;
+  });
+
+  return count;
+}
+
 async function count_files(dir) {
   let count = 0;
   const subdirs = fs.readdirSync(dir);
@@ -180,8 +199,30 @@ function getNewData(data) {
     ) {
       let new_options = [];
       for (const op of dt["options"]) {
-        if (op["details"] != "not found" && op["details"] != "403 Forbidden")
-          new_options.push(op);
+        if (op["details"] != "not found" && op["details"] != "403 Forbidden") {
+          // check if duplicated variations
+          let duplicated_flag = false;
+          for (const nop of new_options) {
+            if (arraysEqual(nop["values"], op["values"])) {
+              console.log(dt.url, op["values"]);
+              duplicated_flag = true;
+              if (nop.finalprice < op.finalprice) {
+                console.log("higher", nop["values"]);
+                nop.catalognumber = op.catalognumber;
+                nop.mfgnumber = op.mfgnumber;
+                nop.oldprice = op.oldprice;
+                nop.finalprice = op.finalprice;
+                nop.suffix = op.suffix;
+                nop.instock = op.instock;
+                nop.weight = op.weight;
+                nop.imgs = op.imgs;
+                nop.specs = op.specs;
+                nop.values = op.values;
+              }
+            }
+          }
+          if (!duplicated_flag) new_options.push(op);
+        }
       }
       // if (new_options.length > 1) new_options = new_options.slice(1);
       let new_body = dt.body
@@ -198,9 +239,30 @@ function getNewData(data) {
       )
         new_body = new_body.replace("<div ><br><h3>", "<div ><h3>");
 
+      const counts = new Map(); // This will track the count for each item
+
+      const new_optionnames = [];
+      for (const item of dt["optionnames"]) {
+        // Get the current count for this item, defaulting to 0 if not yet present
+        const count = counts.get(item) || 0;
+
+        // Determine the suffix; if count is 0, we don't add a suffix.
+        let suffix = "";
+        if (count > 0 || countElementInList(item, dt["optionnames"]) > 1) {
+          // ASCII 65 is 'A', so 65 + count is 'A', 'B', 'C', etc.
+          suffix = " " + String.fromCharCode(65 + count);
+        }
+
+        // Add the updated item to the new_optionnames array
+        new_optionnames.push(item + suffix);
+
+        // Update the count for this item in the map
+        counts.set(item, count + 1);
+      }
+
       new_data.push({
         options: new_options,
-        optionnames: dt["optionnames"],
+        optionnames: new_optionnames,
         brand: dt["brand"],
         category: dt["category"],
         tree: dt.options[0].tree,
@@ -608,6 +670,7 @@ const zipFile = (filePath, outputZipPath, compressionLevel = "DEFLATE") => {
 };
 
 exports.getCSV = async () => {
+  console.log("=============================================");
   const data = getAllData();
   const new_data = getNewData(data);
   const addedData = addImages(new_data);

@@ -804,7 +804,7 @@ async function get_product_details(numberofprocess = 4) {
     while (!finished) {
       // Launch a new browser session
       const browser = await puppeteer.launch({
-        headless: false,
+        headless: "NEW",
         timeout: 60000,
       });
       // Open a new page
@@ -905,7 +905,7 @@ async function get_product_details(numberofprocess = 4) {
 
     // download images
     // Launch a new browser session
-    const browser = await puppeteer.launch({ headless: "NEW", timeout: 60000 });
+    const browser = await puppeteer.launch({ headless: false, timeout: 60000 });
     // Open a page to download
     const download_page = await browser.newPage();
     // Set the navigation timeout (in milliseconds)
@@ -997,30 +997,61 @@ module.exports = get_product_details;
 /*
 (async () => {
   // Launch a new browser session
-  const browser = await puppeteer.launch({ headless: false });
-  // Open a new page
-  const page = await browser.newPage();
-  // Set the navigation timeout (in milliseconds)
-  await page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
+  // const browser = await puppeteer.launch({ headless: false });
+  // // Open a new page
+  // const page = await browser.newPage();
+  // // Set the navigation timeout (in milliseconds)
+  // await page.setDefaultNavigationTimeout(300000); // Timeout after 300 seconds
 
-  const metadata = {
-    brand: "JKS Manufacturing",
-    category: "JKS Manufacturing Lift Kits & Suspension",
-    "category url":
-      "https://www.quadratec.com/brand/jks-manufacturing/lift-kits-and-suspension",
-    title:
-      'JKS Manufacturing PAC2111 Flex Connect Disconnecting Sway Bar Link Kit for 07-18 Jeep Wrangler JK with 2-5" Lift',
-    url: "https://www.quadratec.com/products/16160_0009_14.htm",
-    finalprice: "$415.99",
-    oldprice: "",
-    instock: false,
+  // const metadata = {
+  //   brand: "KC HiLiTES",
+  //   category: "KC HiLiTES Lighting, Lenses, Bulbs",
+  //   "category url":
+  //     "https://www.quadratec.com/brand/kc-hilites/lighting-lenses-bulbs",
+  //   title: "KC HiLiTES Replacement Lens for KC HiLites Cyclone V2 LED Light",
+  //   url: "https://www.quadratec.com/p/kc-hilites/replacement-lens-kc-hilites-cyclone-v2-led-light",
+  //   finalprice: "$3.99",
+  //   oldprice: "",
+  //   instock: true,
+  // };
+
+  // const response = await get_product(page, metadata);
+  // fs.writeFileSync("test.json", JSON.stringify(response, null, 2), "utf8");
+  // fs.writeFileSync("test.html", response.body, "utf8");
+
+  // await browser.close();
+  // console.log(response);
+
+  const countElementInList = (target, elemntList) => {
+    let count = 0;
+
+    elemntList.forEach((ele) => {
+      if (ele === target) count++;
+    });
+
+    return count;
   };
 
-  const response = await get_product(page, metadata);
-  fs.writeFileSync("test.json", JSON.stringify(response, null, 2), "utf8");
-  fs.writeFileSync("test.html", response.body, "utf8");
+  const counts = new Map(); // This will track the count for each item
+  const optionnames = ["select", "select"];
+  const new_optionnames = [];
+  for (const item of optionnames) {
+    // Get the current count for this item, defaulting to 0 if not yet present
+    const count = counts.get(item) || 0;
 
-  await browser.close();
-  // console.log(response);
+    // Determine the suffix; if count is 0, we don't add a suffix.
+    let suffix = "";
+    if (count > 0 || countElementInList(item, optionnames) > 0) {
+      // ASCII 65 is 'A', so 65 + count is 'A', 'B', 'C', etc.
+      suffix = " " + String.fromCharCode(65 + count);
+    }
+
+    // Add the updated item to the new_optionnames array
+    new_optionnames.push(item + suffix);
+
+    // Update the count for this item in the map
+    counts.set(item, count + 1);
+  }
+  console.log(new_optionnames);
 })();
 //*/
